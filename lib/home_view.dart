@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:developer';
-
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:socket_io_client/socket_io_client.dart';
 import 'package:socket_io_impelentation/message_model.dart';
 
@@ -13,9 +15,19 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
+  bool _proccessing = false;
+  setProccessing(bool v) {
+    setState(() {
+      _proccessing = v;
+    });
+  }
+
   List<Message> messages = [];
   final controller = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
   late Socket socket;
+  File? _image;
+  String? _memoryImage;
   @override
   void initState() {
     super.initState();
@@ -48,11 +60,11 @@ class _HomeViewState extends State<HomeView> {
     });
   }
 
-  _sendMessage() {
+  _sendMessage(String message) {
     socket.emit(
       'message',
       {
-        'message': controller.text.trim(),
+        'message': message,
         'sender': 'Collins01',
       },
     );
@@ -98,12 +110,35 @@ class _HomeViewState extends State<HomeView> {
               ),
             ),
           ),
+          Column(
+            children: [
+              TextButton(
+                onPressed: () async {
+                  var res = await _imagePicker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (res != null) {
+                    var bytes = await base64ImageFromPath(_image!.path, _image);
+                    setState(() {
+                      _memoryImage = bytes;
+                    });
+                  }
+                },
+                child: const Text("Pick File"),
+              )
+            ],
+          ),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
+                    onChanged: (v) {
+                      socket.emit('typing', {'msg': 'Collins01 is Typing '});
+
+                      socket.on('typing', (data) => log(data.toString()));
+                    },
                     controller: controller,
                     decoration: const InputDecoration(hintText: "Send Message"),
                   ),
@@ -111,7 +146,7 @@ class _HomeViewState extends State<HomeView> {
                 IconButton(
                   onPressed: () {
                     if (controller.text.trim().isNotEmpty) {
-                      _sendMessage();
+                      _sendMessage(controller.text.trim());
                     }
                     return;
                   },
@@ -124,4 +159,12 @@ class _HomeViewState extends State<HomeView> {
       ),
     ));
   }
+}
+
+Future<String> base64ImageFromPath(String path, dynamic file) async {
+  final String filename = path.split('/').last;
+  final String ext = filename.split('.').last;
+  final String base64Image =
+      "data:image/$ext;base64," + base64Encode(await file.readAsBytes());
+  return base64Image;
 }
